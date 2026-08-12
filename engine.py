@@ -84,3 +84,29 @@ def run_full_analysis(image_path):
         "metadata": metadata,
         "risk_score": risk_score,
     }
+def get_location_name(lat, lon):
+    """Converts Latitude and Longitude into City, Country format."""
+    try:
+        # Initialize OpenStreetMap Nominatim Geocoder
+        geolocator = Nominatim(user_agent="media_tracer_forensics")
+        location = geolocator.reverse((lat, lon), language="en")
+
+        if location and "address" in location.raw:
+            address = location.raw["address"]
+
+            # Extract city (sometimes stored as town, village, or municipality)
+            city = (
+                address.get("city")
+                or address.get("town")
+                or address.get("village")
+                or address.get("municipality")
+                or "Unknown City"
+            )
+
+            country = address.get("country", "Unknown Country")
+            return f"{city}, {country}"
+
+    except Exception:
+        pass
+
+    return "Location Resolution Failed"
