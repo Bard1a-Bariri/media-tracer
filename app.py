@@ -2,6 +2,7 @@ import json
 import os
 import streamlit as st
 from PIL import Image
+from geopy.geocoders import Nominatim
 
 
 from engine import run_full_analysis
@@ -104,6 +105,7 @@ if uploaded_files:
                     gps_key = next((k for k in exif_data if "GPS" in k), None)
 
                     if gps_key:
+                        raw_coords = exif_data[gps_key]
                         try:
                             lat, lon = raw_coords[0], raw_coords[1]
                             geolocator = Nominatim(user_agent="media_tracer_forensics")
