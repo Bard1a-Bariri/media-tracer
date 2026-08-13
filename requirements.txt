@@ -1,0 +1,8 @@
+streamlit
+Pillow
+imagehash
+geopy
+networkx
+matplotlib
+torch
+torchvision
