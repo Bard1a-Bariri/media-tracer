@@ -62,10 +62,11 @@ if uploaded_files:
 
             st.markdown("---")
             st.subheader("AI Probability")
-            ai_pct = int(results["ai_probability"] * 100)
+            ai_prob = results.get("ai_probability", 0.0)
+            ai_pct = int(ai_prob * 100)
             st.metric(label="Pixel Classification Score", value=f"{ai_pct}%")
 
-            if results["ai_probability"] > 0.70:
+            if ai_pct > 0.70:
                 st.error("🚨 High probability of synthetic / AI generation.")
             elif results["ai_probability"] > 0.30:
                 st.warning("⚠️ Suspicious signatures detected.")
