@@ -1,19 +1,26 @@
 import os
-from geopy.geocoders import Nominatim
 import imagehash
+import numpy as np
 from PIL import Image
 from PIL.ExifTags import TAGS
+from geopy.geocoders import Nominatim
 from transformers import pipeline
 
+# 1. ENSEMBLE MODELS: Load two complementary classification models
 try:
-    ai_classifier = pipeline(
+    classifier_1 = pipeline(
         "image-classification", model="umm-maybe/AI-image-detector"
     )
+    classifier_2 = pipeline(
+        "image-classification", model="dima806/deepfake_vs_real_image_detection"
+    )
 except Exception:
-    ai_classifier = None
+    classifier_1 = None
+    classifier_2 = None
 
 
 def generate_hashes(image_path):
+    """Generates perceptual, difference, and average hashes for the image."""
     try:
         img = Image.open(image_path)
         return {
@@ -26,6 +33,7 @@ def generate_hashes(image_path):
 
 
 def parse_metadata(image_path):
+    """Extracts EXIF metadata and scans raw binary bytes for AI keywords."""
     try:
         img = Image.open(image_path)
         exif_data = img._getexif() or {}
@@ -63,12 +71,36 @@ def parse_metadata(image_path):
         }
 
 
-def detect_ai_pixels(image_path):
-    if not ai_classifier:
-        return 0.05
+def is_digital_screenshot(image_path, metadata):
+    """SCREENSHOT PRE-FILTER: Detects if an image is likely a UI screenshot / digital graphic
+
+    rather than a photograph or AI art based on low color noise variance.
+    """
+    if metadata.get("has_exif", False):
+        return False
 
     try:
-        predictions = ai_classifier(image_path)
+        img = Image.open(image_path).convert("RGB")
+        img_array = np.array(img)
+
+        # Calculate standard deviation across color channels
+        # Flat digital vectors and UI graphics have significantly lower color noise variance
+        std_dev = np.std(img_array)
+
+        if std_dev < 45.0:
+            return True
+    except Exception:
+        pass
+
+    return False
+
+
+def _extract_model_score(classifier, image_path):
+    """Helper function to extract AI probability score from a Hugging Face pipeline."""
+    if not classifier:
+        return 0.05
+    try:
+        predictions = classifier(image_path)
         for pred in predictions:
             if pred["label"].lower() in [
                 "artificial",
@@ -76,31 +108,50 @@ def detect_ai_pixels(image_path):
                 "fake",
                 "synthetic",
             ]:
-                return round(float(pred["score"]), 2)
-
+                return float(pred["score"])
         return 0.05
     except Exception:
         return 0.05
 
 
-def calculate_risk_score(hashes, metadata, ai_prob):
+def detect_ai_pixels(image_path, is_screenshot=False):
+    """ENSEMBLE AI DETECTION: Averages scores from both models and applies screenshot weighting."""
+    score1 = _extract_model_score(classifier_1, image_path)
+    score2 = _extract_model_score(classifier_2, image_path)
+
+    # Calculate ensemble average
+    avg_score = (score1 + score2) / 2.0
+
+    # Dampen score if image is a UI screen capture to avoid false positives
+    if is_screenshot:
+        avg_score = avg_score * 0.35
+
+    return round(avg_score, 2)
+
+
+def calculate_risk_score(hashes, metadata, ai_prob, is_screenshot):
+    """RE-CALIBRATED RISK INDEX: Combines all factors with calibrated thresholds."""
     score = 10
 
-    if not metadata.get("has_exif", False):
-        score += 25
+    # Missing EXIF adds risk UNLESS it was recognized as a UI screenshot
+    if not metadata.get("has_exif", False) and not is_screenshot:
+        score += 20
 
+    # Known AI byte signatures add high risk
     if metadata.get("ai_signature_flagged", False):
-        score += 35
+        score += 40
 
-    if ai_prob > 0.70:
-        score += 30
-    elif ai_prob > 0.40:
+    # Re-calibrated AI probability risk additions
+    if ai_prob > 0.75:
+        score += 35
+    elif ai_prob > 0.45:
         score += 15
 
     return min(score, 100)
 
 
 def get_location_name(lat, lon):
+    """Converts Latitude and Longitude into City, Country format."""
     try:
         geolocator = Nominatim(user_agent="media_tracer_forensics")
         location = geolocator.reverse((lat, lon), language="en")
@@ -125,18 +176,28 @@ def get_location_name(lat, lon):
 
 
 def run_full_analysis(image_path):
+    """Main pipeline execution function."""
+    # 1. Hashes & Metadata
     hashes = generate_hashes(image_path)
-
     metadata = parse_metadata(image_path)
 
-    ai_probability = detect_ai_pixels(image_path)
+    # 2. Check if file is a UI Screenshot / Flat Graphic
+    is_screenshot = is_digital_screenshot(image_path, metadata)
 
-    risk_score = calculate_risk_score(hashes, metadata, ai_probability)
+    # 3. Detect AI pixels (with ensemble + screenshot adjustment)
+    ai_probability = detect_ai_pixels(image_path, is_screenshot=is_screenshot)
 
+    # 4. Calculate Risk Score
+    risk_score = calculate_risk_score(
+        hashes, metadata, ai_probability, is_screenshot
+    )
+
+    # 5. Return structured analysis output
     return {
         "file_name": os.path.basename(image_path),
         "risk_score": risk_score,
         "ai_probability": ai_probability,
+        "is_screenshot": is_screenshot,
         "hashes": hashes,
         "metadata": metadata,
     }

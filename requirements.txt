@@ -8,3 +8,4 @@ torch
 torchvision
 transformers
 huggingface-hub
+numpy
