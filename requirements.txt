@@ -6,3 +6,5 @@ networkx
 matplotlib
 torch
 torchvision
+transformers
+huggingface-hub
