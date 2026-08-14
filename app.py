@@ -62,17 +62,18 @@ if uploaded_files:
 
             st.markdown("---")
             st.subheader("AI Probability")
+
             ai_prob = results.get("ai_probability", 0.0)
             ai_pct = int(ai_prob * 100)
+
             st.metric(label="Pixel Classification Score", value=f"{ai_pct}%")
 
-            if ai_pct > 0.70:
+            if ai_prob > 0.75:
                 st.error("🚨 High probability of synthetic / AI generation.")
-            elif results["ai_probability"] > 0.30:
-                st.warning("⚠️ Suspicious signatures detected.")
+            elif ai_prob > 0.40:
+                st.warning("⚠️ Suspicious signatures or unusual pixel patterns detected.")
             else:
                 st.success("✅ Consistent with authentic capture.")
-
 
             st.markdown("---")
             report_json = json.dumps(results, indent=4)
@@ -102,7 +103,7 @@ if uploaded_files:
                 metadata = results["metadata"]
                 exif_data = metadata.get("exif", {})
 
-                if metadata["has_exif"]:
+                if metadata.get("has_exif", False):
                     gps_key = next((k for k in exif_data if "GPS" in k), None)
 
                     if gps_key:
@@ -131,7 +132,7 @@ if uploaded_files:
                 else:
                     st.warning("No standard EXIF camera metadata found in file.")
 
-                if metadata["ai_signature_flagged"]:
+                if metadata.get("ai_signature_flagged", False):
                     st.error(
                         "🚨 Known synthetic tag (e.g., C2PA, Midjourney, DALL-E) found in raw file bytes!"
                     )
