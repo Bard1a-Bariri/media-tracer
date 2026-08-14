@@ -133,20 +133,28 @@ if uploaded_files:
                         "🚨 Known synthetic tag (e.g., C2PA, Midjourney, DALL-E) found in raw file bytes!"
                     )
 
-            with tab3:
-                st.subheader("Simulated Media Footprint")
+    with tab3:
+        st.subheader("Simulated Media Footprint")
 
-                mock_edges = [
-                    ("Original Domain", "Social Platform A"),
-                    ("Social Platform A", "Target Upload"),
-                ]
+        risk_level = results.get("risk_score", 10)
 
-                fig = generate_propagation_graph(
-                    mock_edges, target_node="Target Upload"
-                )
-                st.pyplot(fig)
+        if risk_level >= 70:
+            # High-risk / Deepfake spread across multiple bot networks
+            mock_edges = [
+                ("Synthetic Generator API", "Anonymous Forum"),
+                ("Anonymous Forum", "Bot Network Alpha"),
+                ("Anonymous Forum", "Bot Network Beta"),
+                ("Bot Network Alpha", "Twitter/X Misinfo Feed"),
+                ("Bot Network Beta", "Telegram Channel"),
+                ("Twitter/X Misinfo Feed", "Target Upload"),
+            ]
+        else:
+            # Low-risk / Standard direct social share
+            mock_edges = [
+                ("Original Camera Device", "Cloud Storage"),
+                ("Cloud Storage", "Messaging App"),
+                ("Messaging App", "Target Upload"),
+            ]
 
-        st.markdown("---")
-
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
+        fig = generate_propagation_graph(mock_edges, target_node="Target Upload")
+        st.pyplot(fig)
