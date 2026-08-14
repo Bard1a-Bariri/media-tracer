@@ -133,28 +133,43 @@ if uploaded_files:
                         "🚨 Known synthetic tag (e.g., C2PA, Midjourney, DALL-E) found in raw file bytes!"
                     )
 
-    with tab3:
-        st.subheader("Simulated Media Footprint")
+            with tab3:
+                st.subheader("Simulated Media Footprint & Network Provenance")
 
-        risk_level = results.get("risk_score", 10)
+                risk_level = results.get("risk_score", 10)
+                is_screenshot = results.get("is_screenshot", False)
 
-        if risk_level >= 70:
-            # High-risk / Deepfake spread across multiple bot networks
-            mock_edges = [
-                ("Synthetic Generator API", "Anonymous Forum"),
-                ("Anonymous Forum", "Bot Network Alpha"),
-                ("Anonymous Forum", "Bot Network Beta"),
-                ("Bot Network Alpha", "Twitter/X Misinfo Feed"),
-                ("Bot Network Beta", "Telegram Channel"),
-                ("Twitter/X Misinfo Feed", "Target Upload"),
-            ]
-        else:
-            # Low-risk / Standard direct social share
-            mock_edges = [
-                ("Original Camera Device", "Cloud Storage"),
-                ("Cloud Storage", "Messaging App"),
-                ("Messaging App", "Target Upload"),
-            ]
+                # 1. High Risk / Synthetic AI
+                if risk_level >= 70:
+                    st.warning(
+                        "⚠️ High-risk media detected: Tracing potential synthetic generation and automated spread networks."
+                    )
+                    mock_edges = [
+                        ("Synthetic Generator API", "Anonymous Forum Thread"),
+                        ("Anonymous Forum Thread", "Bot Network Alpha"),
+                        ("Anonymous Forum Thread", "Bot Network Beta"),
+                        ("Bot Network Alpha", "Twitter/X Misinfo Feed"),
+                        ("Bot Network Beta", "Telegram Channel"),
+                        ("Twitter/X Misinfo Feed", "Target Upload"),
+                    ]
 
-        fig = generate_propagation_graph(mock_edges, target_node="Target Upload")
-        st.pyplot(fig)
+                # 2. Software Screenshot / Digital Capture
+                elif is_screenshot:
+                    st.info("💻 Software screenshot detected: Tracing local display capture lineage.")
+                    mock_edges = [
+                        ("Display Buffer Render", "OS Screenshot Utility"),
+                        ("OS Screenshot Utility", "Local Disk Storage"),
+                        ("Local Disk Storage", "Target Upload"),
+                    ]
+
+                # 3. Authentic Camera Photo
+                else:
+                    st.success("🟢 Authentic image profile: Tracing standard media transmission.")
+                    mock_edges = [
+                        ("Original Camera Sensor", "Device Cloud Sync"),
+                        ("Device Cloud Sync", "Direct Messaging Share"),
+                        ("Direct Messaging Share", "Target Upload"),
+                    ]
+
+                fig = generate_propagation_graph(mock_edges, target_node="Target Upload")
+                st.pyplot(fig)
