@@ -33,16 +33,24 @@ def generate_hashes(image_path):
 
 
 def parse_metadata(image_path):
-    """Extracts EXIF metadata and scans raw binary bytes for AI keywords."""
+    """Extracts camera EXIF, PNG text chunks, and raw byte signatures."""
     try:
         img = Image.open(image_path)
-        exif_data = img._getexif() or {}
+        parsed_meta = {}
 
-        parsed_exif = {}
+        # 1. Try extracting Camera EXIF (JPEGs)
+        exif_data = img._getexif() or {}
         for tag_id, value in exif_data.items():
             tag_name = TAGS.get(tag_id, tag_id)
-            parsed_exif[tag_name] = str(value)
+            parsed_meta[str(tag_name)] = str(value)
 
+        # 2. Extract PNG Text Chunks (Screenshots & Web Graphics)
+        # img.info holds non-EXIF metadata like PNG text tags or Photoshop headers
+        for key, val in img.info.items():
+            if isinstance(val, (str, bytes)):
+                parsed_meta[f"Header_{key}"] = str(val)
+
+        # 3. Check for AI byte signatures
         ai_flag = False
         ai_keywords = [
             "c2pa",
@@ -51,21 +59,22 @@ def parse_metadata(image_path):
             "stable diffusion",
             "adobe firefly",
         ]
-
         with open(image_path, "rb") as f:
             raw_bytes = f.read().lower()
             if any(kw.encode() in raw_bytes for kw in ai_keywords):
                 ai_flag = True
 
         return {
-            "exif": parsed_exif,
-            "has_exif": len(parsed_exif) > 0,
+            "exif": parsed_meta,
+            "has_metadata": len(parsed_meta) > 0,
+            "has_camera_exif": len(exif_data) > 0,
             "ai_signature_flagged": ai_flag,
         }
     except Exception as e:
         return {
             "exif": {},
-            "has_exif": False,
+            "has_metadata": False,
+            "has_camera_exif": False,
             "ai_signature_flagged": False,
             "error": str(e),
         }
