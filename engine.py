@@ -132,14 +132,7 @@ def run_full_analysis(image_path):
     # --- SCREENSHOT CHECK (Inline) ---
     is_screenshot = False
     if not metadata.get("has_exif", False):
-        try:
-            img = Image.open(image_path).convert("RGB")
-            std_dev = np.std(np.array(img))
-            # Standard deviation threshold set to 75.0 for app/UI graphics
-            if std_dev < 75.0:
-                is_screenshot = True
-        except Exception:
-            pass
+        is_screenshot = True
 
     # --- AI DETECTION ---
     score1 = _extract_model_score(classifier_1, image_path)
