@@ -1,6 +1,5 @@
 import json
 import os
-from geopy.geocoders import Nominatim
 from PIL import Image
 import streamlit as st
 
@@ -35,7 +34,9 @@ if uploaded_files:
         with st.spinner(f"Analyzing {uploaded_file.name}..."):
             results = run_full_analysis(temp_path)
 
-        st.subheader(f"📄 Analysis for: `{results.get('file_name', uploaded_file.name)}`")
+        st.subheader(
+            f"📄 Analysis for: `{results.get('file_name', uploaded_file.name)}`"
+        )
 
         col1, col2 = st.columns([1, 2])
 
@@ -70,7 +71,9 @@ if uploaded_files:
             if ai_prob > 0.75:
                 st.error("🚨 High probability of synthetic / AI generation.")
             elif ai_prob > 0.40:
-                st.warning("⚠️ Suspicious signatures or unusual pixel patterns detected.")
+                st.warning(
+                    "⚠️ Suspicious signatures or unusual pixel patterns detected."
+                )
             else:
                 st.success("✅ Consistent with authentic capture.")
 
@@ -105,21 +108,26 @@ if uploaded_files:
                 has_camera_exif = metadata.get("has_exif", False)
                 has_png_chunks = metadata.get("has_png_chunks", False)
 
+                # Status Banner
                 if has_camera_exif:
                     st.success("📷 Camera EXIF Metadata Detected (Hardware Photo)")
                 elif has_png_chunks:
-                    st.info("💻 PNG Header Chunks Detected (Software Capture / Screenshot)")
+                    st.info(
+                        "💻 PNG Header Chunks Detected (Software Capture / Screenshot)"
+                    )
                 else:
-                    st.warning(
-                        "ℹ️ No Camera EXIF or PNG text chunks found. Displaying File System & Structure attributes."
+                    st.info(
+                        "ℹ️ No Camera EXIF or PNG text chunks found. Displaying File System & Display Attributes."
                     )
 
+                # Structural Attributes JSON Output
                 if all_meta:
-                    with st.expander("📄 Click to Inspect Full Header & Container Data", expanded=True):
-                        st.json(all_meta)
+                    st.write("### File Container & Display Attributes")
+                    st.json(all_meta)
                 else:
                     st.error("Could not parse file metadata structure.")
 
+                # Byte Signature Alert
                 if metadata.get("ai_signature_flagged", False):
                     st.error(
                         "🚨 Known synthetic tag (e.g., C2PA, Midjourney, DALL-E) found in raw file bytes!"

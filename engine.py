@@ -35,26 +35,15 @@ def generate_hashes(image_path):
 
 def parse_metadata(image_path):
     """Extracts Camera EXIF, PNG Text Chunks, File System properties, and Display Aspect Ratio."""
+    parsed_meta = {}
+    has_camera_exif = False
+    has_png_chunks = False
+    ai_flag = False
+
     try:
         img = Image.open(image_path)
-        parsed_meta = {}
 
-        # 1. Camera EXIF (For standard photos)
-        exif_data = img._getexif() or {}
-        has_camera_exif = len(exif_data) > 0
-        for tag_id, value in exif_data.items():
-            tag_name = TAGS.get(tag_id, tag_id)
-            parsed_meta[f"EXIF_{tag_name}"] = str(value)
-
-        # 2. PNG Text Chunks (For screenshots & web graphics)
-        png_chunks = {}
-        if img.info:
-            for key, val in img.info.items():
-                if isinstance(val, (str, bytes)):
-                    png_chunks[str(key)] = str(val)
-                    parsed_meta[f"PNG_Header_{key}"] = str(val)
-
-        # 3. Structural & Display Metadata (Crucial for Screenshots)
+        # 1. ALWAYS Extract Structural & Display Metadata (Works on ALL screenshots)
         width, height = img.size
         aspect_ratio = round(width / height, 2) if height > 0 else 0
         parsed_meta["Display_Width_px"] = width
@@ -63,13 +52,30 @@ def parse_metadata(image_path):
         parsed_meta["Color_Mode"] = img.mode  # e.g., RGB, RGBA
         parsed_meta["File_Format"] = img.format  # e.g., PNG, JPEG
 
-        # 4. OS File-System Timestamps
+        # 2. File-System Timestamps
         file_stat = os.stat(image_path)
         parsed_meta["OS_Created_Time"] = time.ctime(file_stat.st_ctime)
         parsed_meta["OS_Modified_Time"] = time.ctime(file_stat.st_mtime)
 
-        # 5. Check for AI signature keywords in raw bytes
-        ai_flag = False
+        # 3. Camera EXIF (For hardware photos)
+        try:
+            exif_data = img._getexif()
+            if exif_data:
+                has_camera_exif = True
+                for tag_id, value in exif_data.items():
+                    tag_name = TAGS.get(tag_id, tag_id)
+                    parsed_meta[f"EXIF_{tag_name}"] = str(value)
+        except Exception:
+            pass
+
+        # 4. PNG Text Chunks (For software renders/screenshots)
+        if img.info:
+            for key, val in img.info.items():
+                if isinstance(val, (str, bytes)):
+                    has_png_chunks = True
+                    parsed_meta[f"PNG_Header_{key}"] = str(val)
+
+        # 5. Raw Byte C2PA / Synthetic Keyword Scan
         ai_keywords = [
             "c2pa",
             "dall-e",
@@ -77,7 +83,6 @@ def parse_metadata(image_path):
             "stable diffusion",
             "adobe firefly",
         ]
-
         with open(image_path, "rb") as f:
             raw_bytes = f.read().lower()
             if any(kw.encode() in raw_bytes for kw in ai_keywords):
@@ -86,24 +91,23 @@ def parse_metadata(image_path):
         return {
             "exif": parsed_meta,
             "has_exif": has_camera_exif,
-            "has_png_chunks": len(png_chunks) > 0,
+            "has_png_chunks": has_png_chunks,
             "has_metadata": len(parsed_meta) > 0,
             "ai_signature_flagged": ai_flag,
         }
 
     except Exception as e:
         return {
-            "exif": {},
+            "exif": {"error": f"Failed to parse structure: {str(e)}"},
             "has_exif": False,
             "has_png_chunks": False,
             "has_metadata": False,
             "ai_signature_flagged": False,
-            "error": str(e),
         }
 
 
 def is_digital_screenshot(image_path, metadata):
-    """Detects if an image is a digital UI screenshot / vector graphic based on color noise variance."""
+    """Detects if an image is a digital UI screenshot based on color noise variance."""
     if metadata.get("has_exif", False):
         return False
 
@@ -174,31 +178,6 @@ def calculate_risk_score(hashes, metadata, ai_prob, is_screenshot):
         score += 15
 
     return min(score, 100)
-
-
-def get_location_name(lat, lon):
-    """Converts GPS coordinates into City, Country format."""
-    try:
-        geolocator = Nominatim(user_agent="media_tracer_forensics")
-        location = geolocator.reverse((lat, lon), language="en")
-
-        if location and "address" in location.raw:
-            address = location.raw["address"]
-            city = (
-                address.get("city")
-                or address.get("town")
-                or address.get("village")
-                or address.get("municipality")
-                or "Unknown City"
-            )
-
-            country = address.get("country", "Unknown Country")
-            return f"{city}, {country}"
-
-    except Exception:
-        pass
-
-    return "Location Resolution Failed"
 
 
 def run_full_analysis(image_path):
