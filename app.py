@@ -1,9 +1,8 @@
 import json
 import os
-import streamlit as st
-from PIL import Image
 from geopy.geocoders import Nominatim
-
+from PIL import Image
+import streamlit as st
 
 from engine import run_full_analysis
 from network import generate_propagation_graph
@@ -22,7 +21,7 @@ st.write(
 uploaded_files = st.file_uploader(
     "Upload Target Image(s)",
     type=["jpg", "png", "jpeg"],
-    accept_multiple_files=True, 
+    accept_multiple_files=True,
 )
 
 if uploaded_files:
@@ -36,21 +35,21 @@ if uploaded_files:
         with st.spinner(f"Analyzing {uploaded_file.name}..."):
             results = run_full_analysis(temp_path)
 
-        st.subheader(f"📄 Analysis for: `{results['file_name']}`")
+        st.subheader(f"📄 Analysis for: `{results.get('file_name', uploaded_file.name)}`")
 
         col1, col2 = st.columns([1, 2])
 
         with col1:
             st.image(
                 Image.open(temp_path),
-                caption=results["file_name"],
+                caption=results.get("file_name", uploaded_file.name),
                 use_container_width=True,
             )
 
             st.markdown("---")
             st.subheader("Provenance Risk Index")
 
-            risk = results["risk_score"]
+            risk = results.get("risk_score", 10)
             st.progress(risk / 100)
 
             if risk >= 75:
@@ -80,62 +79,52 @@ if uploaded_files:
             st.download_button(
                 label="📥 Export Forensic Report (JSON)",
                 data=report_json,
-                file_name=f"forensic_report_{results['file_name']}.json",
+                file_name=f"forensic_report_{results.get('file_name', uploaded_file.name)}.json",
                 mime="application/json",
-                key=f"download_{uploaded_file.name}"
+                key=f"download_{uploaded_file.name}",
             )
 
         with col2:
             tab1, tab2, tab3 = st.tabs(
-                ["Perceptual Hashes", "EXIF & Header Data", "Propagation Graph"]
+                ["Perceptual Hashes", "Metadata & Headers", "Propagation Graph"]
             )
 
             with tab1:
                 st.subheader("Visual Fingerprints")
-                st.json(results["hashes"])
+                st.json(results.get("hashes", {}))
                 st.caption(
                     "Perceptual hashes remain stable even if the image is cropped, resized, or re-compressed."
                 )
 
             with tab2:
-                st.subheader("Embedded Metadata Analysis")
+                st.subheader("Embedded Metadata & Header Analysis")
 
-                metadata = results["metadata"]
-                exif_data = metadata.get("exif", {})
+                metadata = results.get("metadata", {})
+                all_meta = metadata.get("exif", {})
 
-                if metadata.get("has_exif", False):
-                    gps_key = next((k for k in exif_data if "GPS" in k), None)
+                has_camera_exif = metadata.get("has_exif", False)
+                has_png_chunks = metadata.get("has_png_chunks", False)
 
-                    if gps_key:
-                        raw_coords = exif_data[gps_key]
-                        try:
-                            lat, lon = raw_coords[0], raw_coords[1]
-                            geolocator = Nominatim(user_agent="media_tracer_forensics")
-                            location = geolocator.reverse((lat, lon), language="en")
-
-                            if location and "address" in location.raw:
-                                addr = location.raw["address"]
-                                city = (
-                                    addr.get("city")
-                                    or addr.get("town")
-                                    or addr.get("village")
-                                    or "Unknown City"
-                                )
-                                country = addr.get("country", "Unknown Country")
-
-                                exif_data[gps_key] = f"{raw_coords} ({city}, {country})"
-                        except Exception:
-                            pass
-
-                    with st.expander("📄 Click to Inspect Full EXIF Header Data"):
-                        st.json(exif_data)
+                if has_camera_exif:
+                    st.success("📷 Camera EXIF Metadata Detected (Hardware Photo)")
+                elif has_png_chunks:
+                    st.info("💻 PNG Header Chunks Detected (Software Capture / Screenshot)")
                 else:
-                    st.warning("No standard EXIF camera metadata found in file.")
+                    st.warning(
+                        "ℹ️ No Camera EXIF or PNG text chunks found. Displaying File System & Structure attributes."
+                    )
+
+                if all_meta:
+                    with st.expander("📄 Click to Inspect Full Header & Container Data", expanded=True):
+                        st.json(all_meta)
+                else:
+                    st.error("Could not parse file metadata structure.")
 
                 if metadata.get("ai_signature_flagged", False):
                     st.error(
                         "🚨 Known synthetic tag (e.g., C2PA, Midjourney, DALL-E) found in raw file bytes!"
                     )
+
             with tab3:
                 st.subheader("Simulated Media Footprint")
 

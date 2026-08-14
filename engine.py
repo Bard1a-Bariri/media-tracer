@@ -1,4 +1,5 @@
 import os
+import time
 import imagehash
 import numpy as np
 from PIL import Image
@@ -6,7 +7,7 @@ from PIL.ExifTags import TAGS
 from geopy.geocoders import Nominatim
 from transformers import pipeline
 
-# 1. ENSEMBLE MODELS: Load two complementary classification models
+# 1. ENSEMBLE AI MODELS: Load complementary detection pipelines
 try:
     classifier_1 = pipeline(
         "image-classification", model="umm-maybe/AI-image-detector"
@@ -20,7 +21,7 @@ except Exception:
 
 
 def generate_hashes(image_path):
-    """Generates perceptual, difference, and average hashes for the image."""
+    """Generates perceptual, difference, and average hashes for visual fingerprinting."""
     try:
         img = Image.open(image_path)
         return {
@@ -33,24 +34,41 @@ def generate_hashes(image_path):
 
 
 def parse_metadata(image_path):
-    """Extracts camera EXIF, PNG text chunks, and raw byte signatures."""
+    """Extracts Camera EXIF, PNG Text Chunks, File System properties, and Display Aspect Ratio."""
     try:
         img = Image.open(image_path)
         parsed_meta = {}
 
-        # 1. Try extracting Camera EXIF (JPEGs)
+        # 1. Camera EXIF (For standard photos)
         exif_data = img._getexif() or {}
+        has_camera_exif = len(exif_data) > 0
         for tag_id, value in exif_data.items():
             tag_name = TAGS.get(tag_id, tag_id)
-            parsed_meta[str(tag_name)] = str(value)
+            parsed_meta[f"EXIF_{tag_name}"] = str(value)
 
-        # 2. Extract PNG Text Chunks (Screenshots & Web Graphics)
-        # img.info holds non-EXIF metadata like PNG text tags or Photoshop headers
-        for key, val in img.info.items():
-            if isinstance(val, (str, bytes)):
-                parsed_meta[f"Header_{key}"] = str(val)
+        # 2. PNG Text Chunks (For screenshots & web graphics)
+        png_chunks = {}
+        if img.info:
+            for key, val in img.info.items():
+                if isinstance(val, (str, bytes)):
+                    png_chunks[str(key)] = str(val)
+                    parsed_meta[f"PNG_Header_{key}"] = str(val)
 
-        # 3. Check for AI byte signatures
+        # 3. Structural & Display Metadata (Crucial for Screenshots)
+        width, height = img.size
+        aspect_ratio = round(width / height, 2) if height > 0 else 0
+        parsed_meta["Display_Width_px"] = width
+        parsed_meta["Display_Height_px"] = height
+        parsed_meta["Aspect_Ratio"] = aspect_ratio
+        parsed_meta["Color_Mode"] = img.mode  # e.g., RGB, RGBA
+        parsed_meta["File_Format"] = img.format  # e.g., PNG, JPEG
+
+        # 4. OS File-System Timestamps
+        file_stat = os.stat(image_path)
+        parsed_meta["OS_Created_Time"] = time.ctime(file_stat.st_ctime)
+        parsed_meta["OS_Modified_Time"] = time.ctime(file_stat.st_mtime)
+
+        # 5. Check for AI signature keywords in raw bytes
         ai_flag = False
         ai_keywords = [
             "c2pa",
@@ -59,6 +77,7 @@ def parse_metadata(image_path):
             "stable diffusion",
             "adobe firefly",
         ]
+
         with open(image_path, "rb") as f:
             raw_bytes = f.read().lower()
             if any(kw.encode() in raw_bytes for kw in ai_keywords):
@@ -66,25 +85,25 @@ def parse_metadata(image_path):
 
         return {
             "exif": parsed_meta,
+            "has_exif": has_camera_exif,
+            "has_png_chunks": len(png_chunks) > 0,
             "has_metadata": len(parsed_meta) > 0,
-            "has_camera_exif": len(exif_data) > 0,
             "ai_signature_flagged": ai_flag,
         }
+
     except Exception as e:
         return {
             "exif": {},
+            "has_exif": False,
+            "has_png_chunks": False,
             "has_metadata": False,
-            "has_camera_exif": False,
             "ai_signature_flagged": False,
             "error": str(e),
         }
 
 
 def is_digital_screenshot(image_path, metadata):
-    """SCREENSHOT PRE-FILTER: Detects if an image is likely a UI screenshot / digital graphic
-
-    rather than a photograph or AI art based on low color noise variance.
-    """
+    """Detects if an image is a digital UI screenshot / vector graphic based on color noise variance."""
     if metadata.get("has_exif", False):
         return False
 
@@ -92,8 +111,7 @@ def is_digital_screenshot(image_path, metadata):
         img = Image.open(image_path).convert("RGB")
         img_array = np.array(img)
 
-        # Calculate standard deviation across color channels
-        # Flat digital vectors and UI graphics have significantly lower color noise variance
+        # Standard deviation across channels indicates noise texture
         std_dev = np.std(img_array)
 
         if std_dev < 45.0:
@@ -105,7 +123,7 @@ def is_digital_screenshot(image_path, metadata):
 
 
 def _extract_model_score(classifier, image_path):
-    """Helper function to extract AI probability score from a Hugging Face pipeline."""
+    """Helper function to extract synthetic probability from Hugging Face pipeline."""
     if not classifier:
         return 0.05
     try:
@@ -128,10 +146,9 @@ def detect_ai_pixels(image_path, is_screenshot=False):
     score1 = _extract_model_score(classifier_1, image_path)
     score2 = _extract_model_score(classifier_2, image_path)
 
-    # Calculate ensemble average
     avg_score = (score1 + score2) / 2.0
 
-    # Dampen score if image is a UI screen capture to avoid false positives
+    # Dampen score for flat digital screenshots to prevent false positive alerts
     if is_screenshot:
         avg_score = avg_score * 0.35
 
@@ -139,18 +156,18 @@ def detect_ai_pixels(image_path, is_screenshot=False):
 
 
 def calculate_risk_score(hashes, metadata, ai_prob, is_screenshot):
-    """RE-CALIBRATED RISK INDEX: Combines all factors with calibrated thresholds."""
+    """Combines forensic indicators into a unified 0-100 Provenance Risk Index."""
     score = 10
 
-    # Missing EXIF adds risk UNLESS it was recognized as a UI screenshot
+    # Missing EXIF adds risk UNLESS file was recognized as a benign screenshot
     if not metadata.get("has_exif", False) and not is_screenshot:
         score += 20
 
-    # Known AI byte signatures add high risk
+    # Known AI C2PA/byte signatures add high risk
     if metadata.get("ai_signature_flagged", False):
         score += 40
 
-    # Re-calibrated AI probability risk additions
+    # AI probability risk additions
     if ai_prob > 0.75:
         score += 35
     elif ai_prob > 0.45:
@@ -160,7 +177,7 @@ def calculate_risk_score(hashes, metadata, ai_prob, is_screenshot):
 
 
 def get_location_name(lat, lon):
-    """Converts Latitude and Longitude into City, Country format."""
+    """Converts GPS coordinates into City, Country format."""
     try:
         geolocator = Nominatim(user_agent="media_tracer_forensics")
         location = geolocator.reverse((lat, lon), language="en")
@@ -185,23 +202,17 @@ def get_location_name(lat, lon):
 
 
 def run_full_analysis(image_path):
-    """Main pipeline execution function."""
-    # 1. Hashes & Metadata
+    """Executes full forensic pipeline on target file."""
     hashes = generate_hashes(image_path)
     metadata = parse_metadata(image_path)
 
-    # 2. Check if file is a UI Screenshot / Flat Graphic
     is_screenshot = is_digital_screenshot(image_path, metadata)
-
-    # 3. Detect AI pixels (with ensemble + screenshot adjustment)
     ai_probability = detect_ai_pixels(image_path, is_screenshot=is_screenshot)
 
-    # 4. Calculate Risk Score
     risk_score = calculate_risk_score(
         hashes, metadata, ai_probability, is_screenshot
     )
 
-    # 5. Return structured analysis output
     return {
         "file_name": os.path.basename(image_path),
         "risk_score": risk_score,
