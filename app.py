@@ -149,7 +149,7 @@ if uploaded_files:
                         
                         if raw_date and raw_date != "—":
                             try:
-                                clean_date = datetime.strptime(raw_date, "%Y:%m:%d %H:%M:%S").strftime("%b %d, %Y, %I:%M %p")
+                                clean_date = datetime.datetime.strptime(raw_date, "%Y:%m:%d %H:%M:%S").strftime("%b %d, %Y, %I:%M %p")
                             except ValueError:
                                 clean_date = raw_date  # Keep raw value if format is unexpected
 
