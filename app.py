@@ -136,7 +136,7 @@ if uploaded_files:
 
                     m_col1, m_col2 = st.columns(2)
                     with m_col1:
-                        st.metric("📅 Date / Time Taken", date_taken)
+                        st.metric("📅 Date / Time Taken", datetime.datetime.strptime(date_taken, "%Y:%m:%d %H:%M:%S").strftime("%b %d, %Y, %I:%M %p"))
                     with m_col2:
                         st.metric("📍 GPS Coordinates", coordinates)
 
