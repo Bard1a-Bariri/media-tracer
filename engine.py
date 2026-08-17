@@ -119,15 +119,6 @@ class ForensicEngine:
                 if lat and lon:
                     parsed_meta["GPS_Coordinates"] = f"{lat}, {lon}"
 
-        # PNG Chunks
-        if img.info:
-            for key, val in img.info.items():
-                if isinstance(val, (str, bytes)):
-                    has_png_chunks = True
-                    val_str = str(val)
-                    if key == "exif":
-                        val_str = val_str.replace("0", "").replace("/", "")
-                    parsed_meta[f"PNG_Header_{key}"] = val_str
 
         # Memory-efficient raw byte scan
         ai_flag = False
