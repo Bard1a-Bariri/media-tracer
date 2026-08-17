@@ -28,7 +28,6 @@ if uploaded_files:
     for uploaded_file in uploaded_files:
         temp_path = f"temp_{uploaded_file.name}"
 
-        # Save buffer to temporary file
         with open(temp_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
 
@@ -114,7 +113,6 @@ if uploaded_files:
                     has_camera_exif = metadata.get("has_exif", False)
                     has_png_chunks = metadata.get("has_png_chunks", False)
 
-                    # Status Banner
                     if has_camera_exif:
                         st.success(
                             "📷 Camera EXIF Metadata Detected (Hardware Photo)"
@@ -128,7 +126,6 @@ if uploaded_files:
                             "ℹ️ No Camera EXIF or PNG text chunks found. Displaying File System & Display Attributes."
                         )
 
-                    # Top-level "When and Where" Summary Cards
                     date_taken = all_meta.get("Date_Taken", "Not Found in EXIF")
                     coordinates = all_meta.get(
                         "GPS_Coordinates", "Not Found in EXIF"
@@ -142,7 +139,6 @@ if uploaded_files:
 
                     st.markdown("---")
 
-                    # Display Detailed Attributes
                     if all_meta:
                         raw_date = all_meta.get("Date_Taken")
                         clean_date = "—"
@@ -151,7 +147,7 @@ if uploaded_files:
                             try:
                                 clean_date = datetime.datetime.strptime(raw_date, "%Y:%m:%d %H:%M:%S").strftime("%b %d, %Y, %I:%M %p")
                             except ValueError:
-                                clean_date = raw_date  # Keep raw value if format is unexpected
+                                clean_date = raw_date  
 
                         formatted_details = {
                             "Dimensions": f"{all_meta.get('Display_Width_px', '—')} × {all_meta.get('Display_Height_px', '—')} px",
@@ -171,7 +167,6 @@ if uploaded_files:
                     else:
                         st.error("Could not parse file metadata structure.")
 
-                    # Byte Signature Alert
                     if metadata.get("ai_signature_flagged", False):
                         st.error(
                             "🚨 Known synthetic tag (e.g., C2PA, Midjourney, DALL-E) found in raw file bytes!"
@@ -225,6 +220,5 @@ if uploaded_files:
                     st.pyplot(fig)
 
         finally:
-            # Ensure temporary file is safely removed after processing
             if os.path.exists(temp_path):
                 os.remove(temp_path)

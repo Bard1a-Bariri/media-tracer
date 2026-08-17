@@ -21,7 +21,6 @@ class ForensicEngine:
         self._models_loaded = False
 
     def load_models(self):
-        """Lazy load Hugging Face models only when needed."""
         if self._models_loaded:
             return
         try:
@@ -41,7 +40,6 @@ class ForensicEngine:
 
     @staticmethod
     def generate_hashes(img: Image.Image) -> dict:
-        """Generates perceptual, difference, and average hashes."""
         try:
             return {
                 "phash": str(imagehash.phash(img)),
@@ -53,7 +51,6 @@ class ForensicEngine:
 
     @staticmethod
     def parse_gps(gps_ifd: dict) -> tuple:
-        """Converts raw GPS IFD data into decimal latitude and longitude."""
 
         def convert_dms(dms, ref):
             deg, mins, secs = (
@@ -77,7 +74,6 @@ class ForensicEngine:
             return None, None
 
     def parse_metadata(self, image_path: str, img: Image.Image) -> dict:
-        """Extracts structural metadata, camera EXIF, GPS, and PNG chunks."""
         parsed_meta = {}
         has_camera_exif = False
         has_png_chunks = False
@@ -95,7 +91,6 @@ class ForensicEngine:
         parsed_meta["OS_Created_Time"] = time.ctime(file_stat.st_ctime)
         parsed_meta["OS_Modified_Time"] = time.ctime(file_stat.st_mtime)
 
-        # Parse EXIF via modern IFDs
         exif_obj = img.getexif()
         if exif_obj:
             exif_ifd = exif_obj.get_ifd(IFD.Exif)
@@ -103,16 +98,13 @@ class ForensicEngine:
                 has_camera_exif = True
                 for tag_id, val in exif_ifd.items():
                     tag_name = TAGS.get(tag_id)
-                    # Only include tags with known string names
                     if tag_name:
                         parsed_meta[f"EXIF_{tag_name}"] = str(val)
 
-                # Extract explicit time taken
                 date_taken = exif_ifd.get(36867) or exif_ifd.get(306)
                 if date_taken:
                     parsed_meta["Date_Taken"] = str(date_taken).strip("\x00 ")
 
-            # Extract GPS
             gps_ifd = exif_obj.get_ifd(IFD.GPSInfo)
             if gps_ifd:
                 lat, lon = self.parse_gps(gps_ifd)
@@ -120,7 +112,6 @@ class ForensicEngine:
                     parsed_meta["GPS_Coordinates"] = f"{lat}, {lon}"
 
 
-        # Memory-efficient raw byte scan
         ai_flag = False
         with open(image_path, "rb") as f:
             chunk = f.read(1024 * 1024).lower()
@@ -193,5 +184,4 @@ _engine = ForensicEngine()
 
 
 def run_full_analysis(image_path: str) -> dict:
-    """Wrapper function allowing app.py to import run_full_analysis directly."""
     return _engine.analyze(image_path)
