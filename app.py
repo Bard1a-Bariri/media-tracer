@@ -144,7 +144,14 @@ if uploaded_files:
                     # Display Detailed Attributes
                     if all_meta:
                         st.write("### File Container & Display Attributes")
-                        st.json(all_meta)
+                        formatted_details = {
+                            "Dimensions": f"{all_meta.get('Display_Width_px', '—')} × {all_meta.get('Display_Height_px', '—')} px",
+                            "Aspect Ratio": f"{all_meta.get('Aspect_Ratio', '—')}:1",
+                            "Color Mode": all_meta.get("Color_Mode", "—"),
+                            "File Format": all_meta.get("File_Format", "—"),
+                            "Created Date": all_meta.get("OS_Created_Time", "—"),
+                            "Modified Date": all_meta.get("OS_Modified_Time", "—"),
+                        }
                     else:
                         st.error("Could not parse file metadata structure.")
 
