@@ -54,13 +54,11 @@ class ForensicEngine:
 
         def convert_dms(dms, ref):
             try:
-                # Convert tuples/IFDRational values safely to floats
                 deg = float(dms[0])
                 mins = float(dms[1])
                 secs = float(dms[2])
                 dec = deg + (mins / 60.0) + (secs / 3600.0)
 
-                # Convert bytes (e.g. b'N') to str if needed
                 if isinstance(ref, bytes):
                     ref = ref.decode("utf-8", errors="ignore")
 
@@ -69,7 +67,6 @@ class ForensicEngine:
                 return None
 
         try:
-            # Map numeric EXIF tag IDs to human-readable string names
             gps_data = {GPSTAGS.get(k, k): v for k, v in gps_ifd.items()}
 
             required_keys = [
