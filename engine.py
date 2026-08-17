@@ -1,48 +1,88 @@
 import os
 import time
-import imagehash
-import numpy as np
 from PIL import Image
-from PIL.ExifTags import TAGS
-from transformers import pipeline
+from PIL.ExifTags import GPSTAGS, IFD, TAGS
+import imagehash
 
-# Load classifiers...
-try:
-    classifier_1 = pipeline(
-        "image-classification", model="umm-maybe/AI-image-detector"
-    )
-    classifier_2 = pipeline(
-        "image-classification", model="dima806/deepfake_vs_real_image_detection"
-    )
-except Exception:
-    classifier_1 = None
-    classifier_2 = None
+# Pre-define AI detection keywords
+AI_KEYWORDS = [
+    b"c2pa",
+    b"dall-e",
+    b"midjourney",
+    b"stable diffusion",
+    b"adobe firefly",
+]
 
 
-def generate_hashes(image_path):
-    """Generates perceptual, difference, and average hashes."""
-    try:
-        img = Image.open(image_path)
-        return {
-            "phash": str(imagehash.phash(img)),
-            "dhash": str(imagehash.dhash(img)),
-            "ahash": str(imagehash.average_hash(img)),
-        }
-    except Exception as e:
-        return {"error": f"Failed to generate hashes: {str(e)}"}
+class ForensicEngine:
 
+    def __init__(self):
+        self.classifier_1 = None
+        self.classifier_2 = None
+        self._models_loaded = False
 
-def parse_metadata(image_path):
-    """Extracts Camera EXIF, PNG Text Chunks, File System properties, and Display Attributes."""
-    parsed_meta = {}
-    has_camera_exif = False
-    has_png_chunks = False
-    ai_flag = False
+    def load_models(self):
+        """Lazy load Hugging Face models only when needed."""
+        if self._models_loaded:
+            return
+        try:
+            from transformers import pipeline
 
-    try:
-        img = Image.open(image_path)
+            self.classifier_1 = pipeline(
+                "image-classification", model="umm-maybe/AI-image-detector"
+            )
+            self.classifier_2 = pipeline(
+                "image-classification",
+                model="dima806/deepfake_vs_real_image_detection",
+            )
+        except Exception:
+            self.classifier_1 = None
+            self.classifier_2 = None
+        self._models_loaded = True
 
-        # 1. Structural & Display Metadata
+    @staticmethod
+    def generate_hashes(img: Image.Image) -> dict:
+        """Generates perceptual, difference, and average hashes."""
+        try:
+            return {
+                "phash": str(imagehash.phash(img)),
+                "dhash": str(imagehash.dhash(img)),
+                "ahash": str(imagehash.average_hash(img)),
+            }
+        except Exception as e:
+            return {"error": f"Failed to generate hashes: {str(e)}"}
+
+    @staticmethod
+    def parse_gps(gps_ifd: dict) -> tuple:
+        """Converts raw GPS IFD data into decimal latitude and longitude."""
+
+        def convert_dms(dms, ref):
+            deg, mins, secs = (
+                float(dms[0]),
+                float(dms[1]),
+                float(dms[2]),
+            )
+            dec = deg + (mins / 60.0) + (secs / 3600.0)
+            return -dec if ref in ["S", "W"] else dec
+
+        try:
+            gps_data = {GPSTAGS.get(k, k): v for k, v in gps_ifd.items()}
+            lat = convert_dms(
+                gps_data["GPSLatitude"], gps_data["GPSLatitudeRef"]
+            )
+            lon = convert_dms(
+                gps_data["GPSLongitude"], gps_data["GPSLongitudeRef"]
+            )
+            return round(lat, 6), round(lon, 6)
+        except Exception:
+            return None, None
+
+    def parse_metadata(self, image_path: str, img: Image.Image) -> dict:
+        """Extracts structural metadata, camera EXIF, GPS, and PNG chunks."""
+        parsed_meta = {}
+        has_camera_exif = False
+        has_png_chunks = False
+
         width, height = img.size
         parsed_meta["Display_Width_px"] = width
         parsed_meta["Display_Height_px"] = height
@@ -52,40 +92,44 @@ def parse_metadata(image_path):
         parsed_meta["Color_Mode"] = img.mode
         parsed_meta["File_Format"] = img.format
 
-        # 2. File-System Timestamps
         file_stat = os.stat(image_path)
         parsed_meta["OS_Created_Time"] = time.ctime(file_stat.st_ctime)
         parsed_meta["OS_Modified_Time"] = time.ctime(file_stat.st_mtime)
 
-        # 3. Camera EXIF
-        try:
-            exif_data = img._getexif()
-            if exif_data:
+        # Parse EXIF via modern IFDs
+        exif_obj = img.getexif()
+        if exif_obj:
+            exif_ifd = exif_obj.get_ifd(IFD.Exif)
+            if exif_ifd:
                 has_camera_exif = True
-                for tag_id, value in exif_data.items():
+                for tag_id, val in exif_ifd.items():
                     tag_name = TAGS.get(tag_id, tag_id)
-                    parsed_meta[f"EXIF_{tag_name}"] = str(value)
-        except Exception:
-            pass
+                    parsed_meta[f"EXIF_{tag_name}"] = str(val)
 
-        # 4. PNG Text Chunks
+                # Extract explicit time taken
+                date_taken = exif_ifd.get(36867) or exif_ifd.get(306)
+                if date_taken:
+                    parsed_meta["Date_Taken"] = str(date_taken).strip("\x00 ")
+
+            # Extract GPS
+            gps_ifd = exif_obj.get_ifd(IFD.GPSInfo)
+            if gps_ifd:
+                lat, lon = self.parse_gps(gps_ifd)
+                if lat and lon:
+                    parsed_meta["GPS_Coordinates"] = f"{lat}, {lon}"
+
+        # PNG Chunks
         if img.info:
             for key, val in img.info.items():
                 if isinstance(val, (str, bytes)):
                     has_png_chunks = True
                     parsed_meta[f"PNG_Header_{key}"] = str(val)
 
-        # 5. Raw Byte Scan
-        ai_keywords = [
-            "c2pa",
-            "dall-e",
-            "midjourney",
-            "stable diffusion",
-            "adobe firefly",
-        ]
+        # Chunked Raw Byte Scan (Memory efficient)
+        ai_flag = False
         with open(image_path, "rb") as f:
-            raw_bytes = f.read().lower()
-            if any(kw.encode() in raw_bytes for kw in ai_keywords):
+            chunk = f.read(1024 * 1024).lower()  # Read first 1MB header
+            if any(kw in chunk for kw in AI_KEYWORDS):
                 ai_flag = True
 
         return {
@@ -96,71 +140,58 @@ def parse_metadata(image_path):
             "ai_signature_flagged": ai_flag,
         }
 
-    except Exception as e:
+    def _extract_model_score(self, classifier, image_path: str) -> float:
+        if not classifier:
+            return 0.05
+        try:
+            preds = classifier(image_path)
+            for pred in preds:
+                if pred["label"].lower() in [
+                    "artificial",
+                    "ai",
+                    "fake",
+                    "synthetic",
+                ]:
+                    return float(pred["score"])
+            return 0.05
+        except Exception:
+            return 0.05
+
+    def analyze(self, image_path: str) -> dict:
+        self.load_models()
+        with Image.open(image_path) as img:
+            hashes = self.generate_hashes(img)
+            metadata = self.parse_metadata(image_path, img)
+
+        # Better Screenshot Heuristic: Check PNG format without EXIF
+        has_exif = metadata.get("has_exif", False)
+        is_png = metadata.get("exif", {}).get("File_Format") == "PNG"
+        is_screenshot = is_png and not has_exif
+
+        # AI Scoring
+        score1 = self._extract_model_score(self.classifier_1, image_path)
+        score2 = self._extract_model_score(self.classifier_2, image_path)
+        ai_prob = round((score1 + score2) / 2.0, 2)
+
+        if is_screenshot:
+            ai_prob = round(ai_prob * 0.35, 2)
+
+        # Reachable Risk Score Logic
+        risk_score = 10
+        if not has_exif and not is_screenshot:
+            risk_score += 20  # Web-compressed or stripped photo
+        if metadata.get("ai_signature_flagged", False):
+            risk_score += 40
+        if ai_prob > 0.75:
+            risk_score += 35
+        elif ai_prob > 0.45:
+            risk_score += 15
+
         return {
-            "exif": {"error": f"Failed to parse structure: {str(e)}"},
-            "has_exif": False,
-            "has_png_chunks": False,
-            "has_metadata": False,
-            "ai_signature_flagged": False,
+            "file_name": os.path.basename(image_path),
+            "risk_score": min(risk_score, 100),
+            "ai_probability": ai_prob,
+            "is_screenshot": is_screenshot,
+            "hashes": hashes,
+            "metadata": metadata,
         }
-
-
-def _extract_model_score(classifier, image_path):
-    if not classifier:
-        return 0.05
-    try:
-        predictions = classifier(image_path)
-        for pred in predictions:
-            if pred["label"].lower() in [
-                "artificial",
-                "ai",
-                "fake",
-                "synthetic",
-            ]:
-                return float(pred["score"])
-        return 0.05
-    except Exception:
-        return 0.05
-
-
-def run_full_analysis(image_path):
-    """Executes full forensic pipeline without extra helper functions."""
-    hashes = generate_hashes(image_path)
-    metadata = parse_metadata(image_path)
-
-    # --- SCREENSHOT CHECK (Inline) ---
-    is_screenshot = False
-    if not metadata.get("has_exif", False):
-        is_screenshot = True
-
-    # --- AI DETECTION ---
-    score1 = _extract_model_score(classifier_1, image_path)
-    score2 = _extract_model_score(classifier_2, image_path)
-    ai_probability = (score1 + score2) / 2.0
-
-    if is_screenshot:
-        ai_probability *= 0.35
-    ai_probability = round(ai_probability, 2)
-
-    # --- RISK SCORE (Inline) ---
-    risk_score = 10
-    if not metadata.get("has_exif", False) and not is_screenshot:
-        risk_score += 20
-    if metadata.get("ai_signature_flagged", False):
-        risk_score += 40
-    if ai_probability > 0.75:
-        risk_score += 35
-    elif ai_probability > 0.45:
-        risk_score += 15
-
-    risk_score = min(risk_score, 100)
-
-    return {
-        "file_name": os.path.basename(image_path),
-        "risk_score": risk_score,
-        "ai_probability": ai_probability,
-        "is_screenshot": is_screenshot,
-        "hashes": hashes,
-        "metadata": metadata,
-    }
