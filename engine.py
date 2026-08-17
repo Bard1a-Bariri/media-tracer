@@ -4,7 +4,6 @@ from PIL import Image
 from PIL.ExifTags import GPSTAGS, IFD, TAGS
 import imagehash
 
-# Pre-define AI detection keywords
 AI_KEYWORDS = [
     b"c2pa",
     b"dall-e",
@@ -125,10 +124,10 @@ class ForensicEngine:
                     has_png_chunks = True
                     parsed_meta[f"PNG_Header_{key}"] = str(val)
 
-        # Chunked Raw Byte Scan (Memory efficient)
+        # Memory-efficient raw byte scan
         ai_flag = False
         with open(image_path, "rb") as f:
-            chunk = f.read(1024 * 1024).lower()  # Read first 1MB header
+            chunk = f.read(1024 * 1024).lower()
             if any(kw in chunk for kw in AI_KEYWORDS):
                 ai_flag = True
 
@@ -163,12 +162,10 @@ class ForensicEngine:
             hashes = self.generate_hashes(img)
             metadata = self.parse_metadata(image_path, img)
 
-        # Better Screenshot Heuristic: Check PNG format without EXIF
         has_exif = metadata.get("has_exif", False)
         is_png = metadata.get("exif", {}).get("File_Format") == "PNG"
         is_screenshot = is_png and not has_exif
 
-        # AI Scoring
         score1 = self._extract_model_score(self.classifier_1, image_path)
         score2 = self._extract_model_score(self.classifier_2, image_path)
         ai_prob = round((score1 + score2) / 2.0, 2)
@@ -176,10 +173,9 @@ class ForensicEngine:
         if is_screenshot:
             ai_prob = round(ai_prob * 0.35, 2)
 
-        # Reachable Risk Score Logic
         risk_score = 10
         if not has_exif and not is_screenshot:
-            risk_score += 20  # Web-compressed or stripped photo
+            risk_score += 20
         if metadata.get("ai_signature_flagged", False):
             risk_score += 40
         if ai_prob > 0.75:
@@ -195,3 +191,11 @@ class ForensicEngine:
             "hashes": hashes,
             "metadata": metadata,
         }
+
+
+_engine = ForensicEngine()
+
+
+def run_full_analysis(image_path: str) -> dict:
+    """Wrapper function allowing app.py to import run_full_analysis directly."""
+    return _engine.analyze(image_path)
