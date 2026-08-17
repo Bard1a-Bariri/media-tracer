@@ -148,7 +148,7 @@ if uploaded_files:
                             "Aspect Ratio": f"{all_meta.get('Aspect_Ratio', '—')}:1",
                             "Color Mode": all_meta.get("Color_Mode", "—"),
                             "File Format": all_meta.get("File_Format", "—"),
-                            "Created Date": all_meta.get("OS_Created_Time", "—"),
+                            "Created Date": all_meta.get("Date_Taken", "—"),
                             "Modified Date": all_meta.get("OS_Modified_Time", "—"),
                         }
 
