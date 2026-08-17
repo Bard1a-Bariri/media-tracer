@@ -102,8 +102,10 @@ class ForensicEngine:
             if exif_ifd:
                 has_camera_exif = True
                 for tag_id, val in exif_ifd.items():
-                    tag_name = TAGS.get(tag_id, tag_id)
-                    parsed_meta[f"EXIF_{tag_name}"] = str(val)
+                    tag_name = TAGS.get(tag_id)
+                    # Only include tags with known string names
+                    if tag_name:
+                        parsed_meta[f"EXIF_{tag_name}"] = str(val)
 
                 # Extract explicit time taken
                 date_taken = exif_ifd.get(36867) or exif_ifd.get(306)
