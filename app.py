@@ -143,7 +143,6 @@ if uploaded_files:
 
                     # Display Detailed Attributes
                     if all_meta:
-                        st.write("### File Container & Display Attributes")
                         formatted_details = {
                             "Dimensions": f"{all_meta.get('Display_Width_px', '—')} × {all_meta.get('Display_Height_px', '—')} px",
                             "Aspect Ratio": f"{all_meta.get('Aspect_Ratio', '—')}:1",
@@ -152,6 +151,13 @@ if uploaded_files:
                             "Created Date": all_meta.get("OS_Created_Time", "—"),
                             "Modified Date": all_meta.get("OS_Modified_Time", "—"),
                         }
+
+                        with st.container(border=True):
+                            st.subheader("📐 File Container & Display Attributes")
+                            for label, value in formatted_details.items():
+                                col_label, col_val = st.columns([1, 2])
+                                col_label.markdown(f"**{label}**")
+                                col_val.write(value)
                     else:
                         st.error("Could not parse file metadata structure.")
 
