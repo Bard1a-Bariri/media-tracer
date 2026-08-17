@@ -143,12 +143,21 @@ if uploaded_files:
 
                     # Display Detailed Attributes
                     if all_meta:
+                        raw_date = all_meta.get("Date_Taken")
+                        clean_date = "—"
+                        
+                        if raw_date and raw_date != "—":
+                            try:
+                                clean_date = datetime.strptime(raw_date, "%Y:%m:%d %H:%M:%S").strftime("%b %d, %Y, %I:%M %p")
+                            except ValueError:
+                                clean_date = raw_date  # Keep raw value if format is unexpected
+
                         formatted_details = {
                             "Dimensions": f"{all_meta.get('Display_Width_px', '—')} × {all_meta.get('Display_Height_px', '—')} px",
                             "Aspect Ratio": f"{all_meta.get('Aspect_Ratio', '—')}:1",
                             "Color Mode": all_meta.get("Color_Mode", "—"),
                             "File Format": all_meta.get("File_Format", "—"),
-                            "Created Date": all_meta.get("Date_Taken", "—"),
+                            "Created Date": clean_date,
                             "Modified Date": all_meta.get("OS_Modified_Time", "—"),
                         }
 
