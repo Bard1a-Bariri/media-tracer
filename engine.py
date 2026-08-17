@@ -124,7 +124,10 @@ class ForensicEngine:
             for key, val in img.info.items():
                 if isinstance(val, (str, bytes)):
                     has_png_chunks = True
-                    parsed_meta[f"PNG_Header_{key}"] = str(val)
+                    val_str = str(val)
+                    if key == "exif":
+                        val_str = val_str.replace("0", "").replace("/", "")
+                    parsed_meta[f"PNG_Header_{key}"] = val_str
 
         # Memory-efficient raw byte scan
         ai_flag = False
