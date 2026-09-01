@@ -1,7 +1,7 @@
 import json
 import os
 import streamlit as st
-from PIL import Image, ImageOps
+from PIL import Image
 import datetime
 
 from engine import run_full_analysis

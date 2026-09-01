@@ -1,6 +1,6 @@
 import os
 import time
-from PIL import Image
+from PIL import Image, ImageOps
 from PIL.ExifTags import GPSTAGS, IFD, TAGS
 import imagehash
 
