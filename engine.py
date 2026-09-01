@@ -3,6 +3,7 @@ import time
 from PIL import Image, ImageOps
 from PIL.ExifTags import GPSTAGS, IFD, TAGS
 import imagehash
+import urllib.parse
 
 AI_KEYWORDS = [
     b"c2pa",
