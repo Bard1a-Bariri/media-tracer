@@ -109,8 +109,33 @@ if uploaded_files:
                 )
 
                 with tab1:
-                    st.subheader("Visual Fingerprints")
-                    st.json(results.get("hashes", {}))
+                    st.subheader("Visual Fingerprints & External Traceability")
+                    
+                    hashes = results.get("hashes", {})
+                    reverse_links = results.get("reverse_search_links", {})
+
+                    if hashes:
+                        for hash_name, hash_value in hashes.items():
+                            with st.container(border=True):
+                                col_info, col_link = st.columns([3, 1])
+                                
+                                with col_info:
+                                    st.markdown(f"**{hash_name.upper()}**")
+                                    st.code(hash_value, language="text")
+                                
+                                with col_link:
+                                    link_url = reverse_links.get(hash_name) or reverse_links.get("google_lens") or reverse_links.get("tineye")
+                                    if link_url:
+                                        st.link_button(
+                                            f"🔍 Search {hash_name.upper()}",
+                                            url=link_url,
+                                            use_container_width=True
+                                        )
+                                    else:
+                                        st.caption("No search link available")
+                    else:
+                        st.info("No perceptual hashes calculated.")
+
                     st.caption(
                         "Perceptual hashes remain stable even if the image is cropped, resized, or re-compressed."
                     )
