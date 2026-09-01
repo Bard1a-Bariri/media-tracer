@@ -24,6 +24,16 @@ uploaded_files = st.file_uploader(
     accept_multiple_files=True,
 )
 
+def safe_format_date(date_str):
+    if not date_str or date_str in ["Not Found in EXIF", "—"]:
+        return "Not Found"
+    try:
+        return datetime.datetime.strptime(
+            date_str, "%Y:%m:%d %H:%M:%S"
+        ).strftime("%b %d, %Y, %I:%M %p")
+    except ValueError:
+        return str(date_str)
+
 if uploaded_files:
     for uploaded_file in uploaded_files:
         temp_path = f"temp_{uploaded_file.name}"
@@ -42,11 +52,12 @@ if uploaded_files:
             col1, col2 = st.columns([1, 2])
 
             with col1:
-                st.image(
-                    Image.open(temp_path),
-                    caption=results.get("file_name", uploaded_file.name),
-                    use_container_width=True,
-                )
+                with Image.open(temp_path) as img:
+                    st.image(
+                        img,
+                        caption=results.get("file_name", uploaded_file.name),
+                        use_container_width=True,
+                    )
 
                 st.markdown("---")
                 st.subheader("Provenance Risk Index")
