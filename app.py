@@ -25,13 +25,12 @@ uploaded_files = st.file_uploader(
 )
 
 def safe_format_date(date_str):
-    if not date_str or date_str in ["Not Found in EXIF", "—"]:
-        return "Not Found"
+    if not date_str or date_str in ["Not Found in EXIF", "—", "None"]:
+        return "Not Found in EXIF"
     try:
-        return datetime.datetime.strptime(
-            date_str, "%Y:%m:%d %H:%M:%S"
-        ).strftime("%b %d, %Y, %I:%M %p")
-    except ValueError:
+        dt = datetime.strptime(str(date_str).strip(), "%Y:%m:%d %H:%M:%S")
+        return dt.strftime("%b %d, %Y, %I:%M %p")
+    except (ValueError, TypeError):
         return str(date_str)
 
 if uploaded_files:
