@@ -136,6 +136,7 @@ if uploaded_files:
                         st.info("No perceptual hashes calculated.")
 
                     st.caption(
+                        "Perceptual hashes remain stable even if the image is cropped, resized, or re-compressed."
                     )
 
                 with tab2:
