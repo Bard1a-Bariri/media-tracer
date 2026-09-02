@@ -2,7 +2,7 @@ import json
 import os
 import streamlit as st
 from PIL import Image
-import datetime
+from datetime import datetime
 
 from engine import run_full_analysis
 from network import generate_propagation_graph
