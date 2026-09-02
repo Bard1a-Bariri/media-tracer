@@ -6,6 +6,7 @@ from PIL import Image, ImageChops, ImageEnhance, ImageOps
 from PIL.ExifTags import GPSTAGS, IFD, TAGS
 import imagehash
 import numpy as np
+import pybktree
 
 AI_KEYWORDS = [
     b"c2pa",
@@ -14,6 +15,15 @@ AI_KEYWORDS = [
     b"stable diffusion",
     b"adobe firefly",
 ]
+
+
+def hamming_distance(h1, h2):
+    """Calculates Hamming distance between two imagehash objects or hex strings."""
+    if isinstance(h1, str):
+        h1 = imagehash.hex_to_hash(h1)
+    if isinstance(h2, str):
+        h2 = imagehash.hex_to_hash(h2)
+    return h1 - h2
 
 
 class ForensicEngine:
@@ -45,7 +55,6 @@ class ForensicEngine:
     def generate_hashes(img: Image.Image) -> dict:
         try:
             return {
-                # Casing formatted to match app.py requirements
                 "pHash": str(imagehash.phash(img)),
                 "dHash": str(imagehash.dhash(img)),
                 "aHash": str(imagehash.average_hash(img)),
@@ -261,7 +270,7 @@ class ForensicEngine:
 
         return {
             "file_name": os.path.basename(image_path),
-            "risk_score": min(risk_score, 100),  # Matched with app.py expectation
+            "risk_score": min(risk_score, 100),
             "composite_risk_score": min(risk_score, 100),
             "ai_probability": ai_prob,
             "is_screenshot": is_screenshot,
@@ -277,4 +286,68 @@ _engine = ForensicEngine()
 
 
 def run_full_analysis(image_path: str) -> dict:
+    """Runs individual image forensics."""
     return _engine.analyze(image_path)
+
+
+def build_bktree_index(reference_dir: str):
+    """
+    Indexes the reference_dataset folder into a BK-Tree.
+    Returns the tree and a dictionary mapping hashes to image metadata.
+    """
+    if not os.path.exists(reference_dir):
+        return None, {}
+
+    dataset_lookup = {}
+    hash_objects = []
+
+    for filename in os.listdir(reference_dir):
+        if filename.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
+            filepath = os.path.join(reference_dir, filename)
+            try:
+                with Image.open(filepath) as img:
+                    corrected_img = ImageOps.exif_transpose(img)
+                    phash_obj = imagehash.phash(corrected_img)
+                    
+                    dataset_lookup[str(phash_obj)] = {
+                        "filename": filename,
+                        "filepath": filepath,
+                        "hash_obj": phash_obj
+                    }
+                    hash_objects.append(phash_obj)
+            except Exception as e:
+                print(f"Error indexing {filename}: {e}")
+
+    if not hash_objects:
+        return None, {}
+
+    tree = pybktree.BKTree(hamming_distance, hash_objects)
+    return tree, dataset_lookup
+
+
+def search_bktree(tree, dataset_lookup, query_phash_str: str, max_distance: int = 15):
+    """
+    Queries the BK-Tree for similar images within a given Hamming distance tolerance.
+    """
+    if tree is None or not query_phash_str:
+        return []
+
+    query_hash = imagehash.hex_to_hash(query_phash_str)
+    # Search the BK-Tree with logarithmic efficiency
+    results = tree.find(query_hash, max_distance)
+
+    matches = []
+    for distance, matched_hash in results:
+        matched_str = str(matched_hash)
+        if matched_str in dataset_lookup:
+            info = dataset_lookup[matched_str]
+            matches.append({
+                "filename": info["filename"],
+                "filepath": info["filepath"],
+                "distance": distance,
+                "similarity_score": max(0, round((1 - (distance / 64.0)) * 100, 2))
+            })
+
+    # Sort results by lowest distance (highest similarity)
+    matches.sort(key=lambda x: x["distance"])
+    return matches
