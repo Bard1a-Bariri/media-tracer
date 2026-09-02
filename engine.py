@@ -1,9 +1,11 @@
+import io
 import os
 import time
-from PIL import Image, ImageOps
+import urllib.parse
+from PIL import Image, ImageChops, ImageEnhance, ImageOps
 from PIL.ExifTags import GPSTAGS, IFD, TAGS
 import imagehash
-import urllib.parse
+import numpy as np
 
 AI_KEYWORDS = [
     b"c2pa",
@@ -43,9 +45,11 @@ class ForensicEngine:
     def generate_hashes(img: Image.Image) -> dict:
         try:
             return {
-                "phash": str(imagehash.phash(img)),
-                "dhash": str(imagehash.dhash(img)),
-                "ahash": str(imagehash.average_hash(img)),
+                # Casing formatted to match app.py requirements
+                "pHash": str(imagehash.phash(img)),
+                "dHash": str(imagehash.dhash(img)),
+                "aHash": str(imagehash.average_hash(img)),
+                "wHash": str(imagehash.whash(img)),
             }
         except Exception as e:
             return {"error": f"Failed to generate hashes: {str(e)}"}
@@ -252,11 +256,12 @@ class ForensicEngine:
         elif ai_prob > 0.45:
             risk_score += 15
 
-        phash_val = hashes.get("phash", "")
+        phash_val = hashes.get("pHash", "")
         reverse_links = self.generate_reverse_search_urls(phash_val)
 
         return {
             "file_name": os.path.basename(image_path),
+            "risk_score": min(risk_score, 100),  # Matched with app.py expectation
             "composite_risk_score": min(risk_score, 100),
             "ai_probability": ai_prob,
             "is_screenshot": is_screenshot,
