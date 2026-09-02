@@ -1,14 +1,15 @@
+from datetime import datetime
 import json
 import os
-import streamlit as st
+import tempfile
+import matplotlib.pyplot as plt
 from PIL import Image
-from datetime import datetime
-
 import imagehash
-from search import build_index_from_folder
+import streamlit as st
 
 from engine import run_full_analysis
 from network import generate_propagation_graph
+from search import build_index_from_folder
 
 st.set_page_config(
     page_title="Media Tracer",
@@ -27,11 +28,14 @@ uploaded_files = st.file_uploader(
     accept_multiple_files=True,
 )
 
+
 @st.cache_resource
 def load_local_database():
     return build_index_from_folder("./reference_dataset")
 
+
 bk_tree = load_local_database()
+
 
 def safe_format_date(date_str):
     if not date_str or date_str in ["Not Found in EXIF", "—", "None"]:
@@ -42,12 +46,14 @@ def safe_format_date(date_str):
     except (ValueError, TypeError):
         return str(date_str)
 
+
 if uploaded_files:
     for uploaded_file in uploaded_files:
-        temp_path = f"temp_{uploaded_file.name}"
-
-        with open(temp_path, "wb") as f:
-            f.write(uploaded_file.getbuffer())
+        # Create a unique temporary file to avoid collisions on identical filenames
+        suffix = os.path.splitext(uploaded_file.name)[1]
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+            temp_file.write(uploaded_file.getbuffer())
+            temp_path = temp_file.name
 
         try:
             with st.spinner(f"Analyzing {uploaded_file.name}..."):
@@ -104,7 +110,7 @@ if uploaded_files:
                     data=report_json,
                     file_name=f"forensic_report_{results.get('file_name', uploaded_file.name)}.json",
                     mime="application/json",
-                    key=f"download_{uploaded_file.name}",
+                    key=f"download_{uploaded_file.name}_{temp_path}",
                 )
 
             with col2:
@@ -118,14 +124,21 @@ if uploaded_files:
 
                 with tab1:
                     st.subheader("Visual Fingerprints & Local Database Search")
-                    
+
                     hashes = results.get("hashes", {})
                     phash_hex = hashes.get("pHash")
 
                     if phash_hex:
-                        query_hash = imagehash.hex_to_hash(phash_hex)
-                        
-                        matches = bk_tree.search(query_hash, max_distance=10)
+                        try:
+                            query_hash = (
+                                imagehash.hex_to_hash(str(phash_hex))
+                                if isinstance(phash_hex, str)
+                                else phash_hex
+                            )
+                            matches = bk_tree.search(query_hash, max_distance=10)
+                        except Exception as e:
+                            matches = []
+                            st.error(f"Error searching BK-Tree: {e}")
 
                         st.markdown("**Perceptual Hashes Calculated:**")
                         for h_name, h_val in hashes.items():
@@ -135,14 +148,18 @@ if uploaded_files:
                         st.subheader("🔎 Local Database Matches")
 
                         if matches:
-                            st.success(f"Found {len(matches)} match(es) in local reference dataset:")
+                            st.success(
+                                f"Found {len(matches)} match(es) in local reference dataset:"
+                            )
                             for filename, dist in matches:
                                 with st.container(border=True):
                                     col_name, col_dist = st.columns([3, 1])
                                     col_name.write(f"📁 **{filename}**")
                                     col_dist.caption(f"Bit Distance: **{dist}**")
                         else:
-                            st.info("No matching images found in local reference database (Hamming distance > 10).")
+                            st.info(
+                                "No matching images found in local reference database (Hamming distance > 10)."
+                            )
                     else:
                         st.info("No perceptual hashes calculated.")
 
@@ -175,9 +192,11 @@ if uploaded_files:
 
                     m_col1, m_col2 = st.columns(2)
                     with m_col1:
-                        st.metric("📅 Date / Time Taken", safe_format_date(date_taken))
+                        st.metric(
+                            "📅 Date / Time Taken", safe_format_date(date_taken)
+                        )
                     with m_col2:
-                        st.metric("📍 GPS Coordinates", coordinates)
+                        st.metric("📍 GPS Coordinates", str(coordinates))
 
                     st.markdown("---")
 
@@ -198,7 +217,7 @@ if uploaded_files:
                             for label, value in formatted_details.items():
                                 col_label, col_val = st.columns([1, 2])
                                 col_label.markdown(f"**{label}**")
-                                col_val.write(value)
+                                col_val.write(str(value))
                     else:
                         st.error("Could not parse file metadata structure.")
 
@@ -253,6 +272,7 @@ if uploaded_files:
                         mock_edges, target_node="Target Upload"
                     )
                     st.pyplot(fig)
+                    plt.close(fig)  # Prevent Matplotlib memory leakage
 
         finally:
             if os.path.exists(temp_path):
