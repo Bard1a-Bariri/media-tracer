@@ -4,6 +4,9 @@ import streamlit as st
 from PIL import Image
 from datetime import datetime
 
+import imagehash
+from search import build_index_from_folder
+
 from engine import run_full_analysis
 from network import generate_propagation_graph
 
@@ -23,6 +26,12 @@ uploaded_files = st.file_uploader(
     type=["jpg", "png", "jpeg"],
     accept_multiple_files=True,
 )
+
+@st.cache_resource
+def load_local_database():
+    return build_index_from_folder("./reference_dataset")
+
+bk_tree = load_local_database()
 
 def safe_format_date(date_str):
     if not date_str or date_str in ["Not Found in EXIF", "—", "None"]:
@@ -108,36 +117,34 @@ if uploaded_files:
                 )
 
                 with tab1:
-                    st.subheader("Visual Fingerprints & External Traceability")
+                    st.subheader("Visual Fingerprints & Local Database Search")
                     
                     hashes = results.get("hashes", {})
-                    reverse_links = results.get("reverse_search_links", {})
+                    phash_hex = hashes.get("pHash")
 
-                    if hashes:
-                        for hash_name, hash_value in hashes.items():
-                            with st.container(border=True):
-                                col_info, col_link = st.columns([3, 1])
-                                
-                                with col_info:
-                                    st.markdown(f"**{hash_name.upper()}**")
-                                    st.code(hash_value, language="text")
-                                
-                                with col_link:
-                                    link_url = reverse_links.get(hash_name) or reverse_links.get("google_lens") or reverse_links.get("tineye")
-                                    if link_url:
-                                        st.link_button(
-                                            f"🔍 Search {hash_name.upper()}",
-                                            url=link_url,
-                                            use_container_width=True
-                                        )
-                                    else:
-                                        st.caption("No search link available")
+                    if phash_hex:
+                        query_hash = imagehash.hex_to_hash(phash_hex)
+                        
+                        matches = bk_tree.search(query_hash, max_distance=10)
+
+                        st.markdown("**Perceptual Hashes Calculated:**")
+                        for h_name, h_val in hashes.items():
+                            st.code(f"{h_name.upper()}: {h_val}", language="text")
+
+                        st.markdown("---")
+                        st.subheader("🔎 Local Database Matches")
+
+                        if matches:
+                            st.success(f"Found {len(matches)} match(es) in local reference dataset:")
+                            for filename, dist in matches:
+                                with st.container(border=True):
+                                    col_name, col_dist = st.columns([3, 1])
+                                    col_name.write(f"📁 **{filename}**")
+                                    col_dist.caption(f"Bit Distance: **{dist}**")
+                        else:
+                            st.info("No matching images found in local reference database (Hamming distance > 10).")
                     else:
                         st.info("No perceptual hashes calculated.")
-
-                    st.caption(
-                        "Perceptual hashes remain stable even if the image is cropped, resized, or re-compressed."
-                    )
 
                 with tab2:
                     st.subheader("Embedded Metadata & Header Analysis")
