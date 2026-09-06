@@ -31,7 +31,7 @@ uploaded_files = st.file_uploader(
 
 @st.cache_resource
 def load_local_database():
-    return build_index_from_folder("./reference_dataset")
+    return build_index_from_folder("reference_dataset")
 
 
 bk_tree = load_local_database()
